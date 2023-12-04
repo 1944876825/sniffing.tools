@@ -1,0 +1,17 @@
+headless: false
+hc_time: 3600
+parse:
+  - name: "测试"
+    match:
+      - "ggys.me"
+    start: ""
+    end: ""
+    suf:
+      - ".mp4"
+      - ".m3u8"
+    wait:
+      - ".prism-big-play-btn"
+    click:
+      - ".prism-big-play-btn"
+    black:
+    time: 20
