@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"sniffing.tools/Config"
+	"sniffing.tools/config"
 	"sniffing.tools/server"
 	"strconv"
 	"strings"
@@ -21,48 +21,49 @@ type UrlItemModel struct {
 var Urls = make(map[string]UrlItemModel)
 
 func main() {
-	Config.Config.GetConfig()
+	config.Config.GetConfig()
 	r := gin.Default()
 
-	r.GET("/xt", func(c *gin.Context) {
-		url := c.Query("url")
-		url = strings.TrimSpace(url)
-		if len(url) == 0 {
-			c.JSON(200, gin.H{"code": 404, "msg": "解析失败"})
-			return
-		}
-		fmt.Println(getMD5(url))
-		if Urls[getMD5(url)].Status == "success" {
-			timestamp := time.Now().Unix()
-			timeExp, _ := strconv.ParseInt(Urls[getMD5(url)].TimeExp, 10, 64)
-			fmt.Println(timestamp, timeExp, timestamp > timeExp)
-			if timestamp < timeExp {
-				c.JSON(200, gin.H{
-					"code": 200,
-					"msg":  "解析成功",
-					"url":  Urls[getMD5(url)].PlayUrl,
-				})
-				return
-			}
-		}
-		Urls[getMD5(url)] = UrlItemModel{
-			Status:  "start",
-			PlayUrl: "",
-			TimeExp: "",
-		}
-		go toParse(url, c)
-		for Urls[getMD5(url)].Status == "start" {
-			time.Sleep(time.Millisecond * 100)
-		}
-	})
-	err := r.Run(":8080")
+	r.GET("/xt", router)
+	err := r.Run(fmt.Sprintf(":%d", config.Config.Port))
 	if err != nil {
 		return
 	}
 }
+func router(c *gin.Context) {
+	url := c.Query("url")
+	url = strings.TrimSpace(url)
+	if len(url) == 0 {
+		c.JSON(200, gin.H{"code": 404, "msg": "解析失败"})
+		return
+	}
+	fmt.Println(getMD5(url))
+	if Urls[getMD5(url)].Status == "success" {
+		timestamp := time.Now().Unix()
+		timeExp, _ := strconv.ParseInt(Urls[getMD5(url)].TimeExp, 10, 64)
+		fmt.Println(timestamp, timeExp, timestamp > timeExp)
+		if timestamp < timeExp {
+			c.JSON(200, gin.H{
+				"code": 200,
+				"msg":  "解析成功",
+				"url":  Urls[getMD5(url)].PlayUrl,
+			})
+			return
+		}
+	}
+	Urls[getMD5(url)] = UrlItemModel{
+		Status:  "start",
+		PlayUrl: "",
+		TimeExp: "",
+	}
+	go toParse(url, c)
+	for Urls[getMD5(url)].Status == "start" {
+		time.Sleep(time.Millisecond * 100)
+	}
+}
 func toParse(url string, c *gin.Context) {
 	var mat = false
-	for _, parse := range Config.Config.Parse {
+	for _, parse := range config.Config.Parse {
 		for _, match := range parse.Match {
 			if strings.Contains(url, match) {
 				mat = true
@@ -82,7 +83,7 @@ func toParse(url string, c *gin.Context) {
 			code, msg, playUrl := ser.Xt()
 			if code == 200 {
 				timestamp := time.Now().Unix()
-				futureTimestamp := timestamp + Config.Config.HcTime
+				futureTimestamp := timestamp + config.Config.HcTime
 				Urls[getMD5(url)] = UrlItemModel{
 					Status:  "success",
 					PlayUrl: playUrl,

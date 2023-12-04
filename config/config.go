@@ -1,4 +1,4 @@
-package Config
+package config
 
 import (
 	"gopkg.in/yaml.v3"
@@ -9,6 +9,7 @@ import (
 var Config = configModel{}
 
 type configModel struct {
+	Port     int   `yaml:"port"`
 	HcTime   int64 `yaml:"hc_time"`
 	Headless bool  `yaml:"headless"`
 	Parse    []ParseItemModel
@@ -22,7 +23,6 @@ type ParseItemModel struct {
 	Wait  []string `yaml:"wait"`
 	Click []string `yaml:"click"`
 	Black []string `yaml:"black"`
-	Time  int      `yaml:"time"`
 }
 
 func (c *configModel) GetConfig() {

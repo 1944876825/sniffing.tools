@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
-	"sniffing.tools/Config"
+	"sniffing.tools/config"
 	"strings"
 	"sync"
 	"time"
@@ -14,7 +14,7 @@ import (
 var Wg sync.WaitGroup
 
 type ServerModel struct {
-	Data       Config.ParseItemModel
+	Data       config.ParseItemModel
 	Url        string
 	playUrl    string
 	ctx        context.Context
@@ -29,7 +29,7 @@ func (s *ServerModel) Init() {
 	s.cancel = append(s.cancel, cancel)
 	// 截图选项
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", Config.Config.Headless), // 设置为true将在后台运行Chrome
+		chromedp.Flag("headless", config.Config.Headless), // 设置为true将在后台运行Chrome
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),

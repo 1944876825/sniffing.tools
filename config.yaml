@@ -1,3 +1,4 @@
+port: 8080
 headless: false
 hc_time: 3600
 parse:
@@ -14,4 +15,3 @@ parse:
     click:
       - ".prism-big-play-btn"
     black:
-    time: 20
