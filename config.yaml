@@ -1,6 +1,6 @@
 port: 8080
-headless: false
-hc_time: 3600
+headless: true
+hc_time: 300
 parse:
   - name: "测试"
     match:

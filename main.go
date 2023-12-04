@@ -89,21 +89,23 @@ func toParse(url string, c *gin.Context) {
 					PlayUrl: playUrl,
 					TimeExp: strconv.FormatInt(futureTimestamp, 10),
 				}
-			} else {
-				Urls[getMD5(url)] = UrlItemModel{
-					Status:  "error",
-					PlayUrl: "",
-					TimeExp: "",
-				}
+				c.JSON(200, gin.H{
+					"code": code,
+					"msg":  msg,
+					"url":  playUrl,
+				})
+				break
 			}
-			c.JSON(200, gin.H{
-				"code": code,
-				"msg":  msg,
-				"url":  playUrl,
-			})
-			break
 		}
 	}
+	Urls[getMD5(url)] = UrlItemModel{
+		Status: "error",
+	}
+	c.JSON(200, gin.H{
+		"code": 404,
+		"msg":  "解析失败",
+		"url":  "",
+	})
 }
 func getMD5(text string) string {
 	// 创建一个MD5哈希对象
