@@ -23,7 +23,7 @@ var Urls = make(map[string]UrlItemModel)
 func main() {
 	config.Config.GetConfig()
 	r := gin.Default()
-
+	gin.SetMode(gin.ReleaseMode)
 	r.GET("/xt", router)
 	err := r.Run(fmt.Sprintf(":%d", config.Config.Port))
 	if err != nil {
