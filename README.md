@@ -1,5 +1,6 @@
 # sniffing.tools
 嗅探网页媒体资源
+<<<<<<< HEAD
 
 ## 主要功能
 * 嗅探网页中的媒体资源
@@ -25,3 +26,5 @@
 ## LICENSE
 
 [MIT](https://opensource.org/license/mit/)
+=======
+>>>>>>> origin/master
