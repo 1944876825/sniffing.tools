@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"log"
 	"sniffing.tools/config"
 	"sniffing.tools/server"
 	"strconv"
@@ -13,7 +14,7 @@ import (
 )
 
 type UrlItemModel struct {
-	Status  string
+	Status  int // 2 进行中 1 完成 3 错误
 	PlayUrl string
 	TimeExp string
 }
@@ -43,15 +44,14 @@ func main() {
 func router(c *gin.Context) {
 	url := c.Query("url")
 	url = strings.TrimSpace(url)
+	log.Println("url:", url)
 	if len(url) == 0 {
 		c.JSON(200, gin.H{"code": 404, "msg": "缺少URL"})
 		return
 	}
-	fmt.Println(getMD5(url))
-	if Urls[getMD5(url)].Status == "success" {
+	if Urls[getMD5(url)].Status == 1 {
 		timestamp := time.Now().Unix()
 		timeExp, _ := strconv.ParseInt(Urls[getMD5(url)].TimeExp, 10, 64)
-		fmt.Println(timestamp, timeExp, timestamp > timeExp)
 		if timestamp < timeExp {
 			c.JSON(200, gin.H{
 				"code": 200,
@@ -61,18 +61,37 @@ func router(c *gin.Context) {
 			return
 		}
 	}
-	Urls[getMD5(url)] = UrlItemModel{
-		Status:  "start",
-		PlayUrl: "",
-		TimeExp: "",
+	if Urls[getMD5(url)].Status == 2 {
+		for Urls[getMD5(url)].Status == 2 {
+			time.Sleep(time.Millisecond * 200)
+		}
+	} else {
+		Urls[getMD5(url)] = UrlItemModel{
+			Status:  2,
+			PlayUrl: "",
+			TimeExp: "",
+		}
+		go toParse(url)
+		for Urls[getMD5(url)].Status == 2 {
+			time.Sleep(time.Millisecond * 200)
+		}
 	}
-	go toParse(url, c)
-	for Urls[getMD5(url)].Status == "start" {
-		time.Sleep(time.Millisecond * 100)
+	if Urls[getMD5(url)].PlayUrl != "" {
+		c.JSON(200, gin.H{
+			"code": 200,
+			"msg":  "解析成功",
+			"url":  Urls[getMD5(url)].PlayUrl,
+		})
+	} else {
+		c.JSON(200, gin.H{
+			"code": 404,
+			"msg":  "解析失败",
+		})
 	}
 }
-func toParse(url string, c *gin.Context) {
+func toParse(url string) {
 	var mat = false
+	var cuParse = config.ParseItemModel{}
 	for _, parse := range config.Config.Parse {
 		for _, match := range parse.Match {
 			if strings.Contains(url, match) {
@@ -81,41 +100,46 @@ func toParse(url string, c *gin.Context) {
 			}
 		}
 		if mat {
-			var ser = server.ServerModel{}
-			ser.Data = parse
-			ser.Url = url
-			if len(parse.Start) != 0 {
-				ser.Url = parse.Start + ser.Url
-			}
-			if len(parse.End) != 0 {
-				ser.Url = ser.Url + parse.End
-			}
-			code, msg, playUrl := ser.Xt()
-			if code == 200 {
-				timestamp := time.Now().Unix()
-				futureTimestamp := timestamp + config.Config.HcTime
-				Urls[getMD5(url)] = UrlItemModel{
-					Status:  "success",
-					PlayUrl: playUrl,
-					TimeExp: strconv.FormatInt(futureTimestamp, 10),
-				}
-				c.JSON(200, gin.H{
-					"code": code,
-					"msg":  msg,
-					"url":  playUrl,
-				})
-				break
-			}
+			cuParse = parse
+			break
 		}
 	}
-	Urls[getMD5(url)] = UrlItemModel{
-		Status: "error",
+
+	var ser = server.Model{}
+	ser.Url = url
+	ser.Data = cuParse
+
+	if mat {
+		if len(cuParse.Start) > 0 {
+			ser.Url = cuParse.Start + ser.Url
+		}
+		if len(cuParse.End) > 0 {
+			ser.Url = ser.Url + cuParse.End
+		}
+	} else {
+		ser.Data.ContentType = []string{
+			"application/vnd.apple.mpegurl",
+			"video/mp4",
+		}
 	}
-	c.JSON(200, gin.H{
-		"code": 404,
-		"msg":  "解析失败",
-		"url":  "",
-	})
+	ser.Init()
+	playUrl, err := ser.StartFindResource()
+	timestamp := time.Now().Unix()
+	futureTimestamp := timestamp + config.Config.HcTime
+	if err == nil {
+		Urls[getMD5(url)] = UrlItemModel{
+			Status:  1,
+			PlayUrl: playUrl,
+			TimeExp: strconv.FormatInt(futureTimestamp, 10),
+		}
+		return
+	}
+	log.Println("解析失败", err.Error())
+	Urls[getMD5(url)] = UrlItemModel{
+		Status:  3,
+		PlayUrl: playUrl,
+		TimeExp: strconv.FormatInt(futureTimestamp, 10),
+	}
 }
 
 // getMD5 获取md5值

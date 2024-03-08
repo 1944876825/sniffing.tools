@@ -7,22 +7,19 @@ import (
 	"github.com/chromedp/chromedp"
 	"sniffing.tools/config"
 	"strings"
-	"sync"
 	"time"
 )
 
-var Wg sync.WaitGroup
-
-type ServerModel struct {
+type Model struct {
 	Data       config.ParseItemModel
 	Url        string
-	playUrl    string
 	ctx        context.Context
+	playUrl    string
 	needListen bool
 	cancel     []context.CancelFunc
 }
 
-func (s *ServerModel) Init() {
+func (s *Model) Init() {
 	// 创建Chrome浏览器上下文
 	var cancel context.CancelFunc
 	s.ctx, cancel = chromedp.NewContext(context.Background())
@@ -42,59 +39,40 @@ func (s *ServerModel) Init() {
 	s.ctx, cancel = chromedp.NewContext(allocCtx)
 	s.cancel = append(s.cancel, cancel)
 	// 设置窗口大小
-	err := chromedp.Run(s.ctx, chromedp.EmulateViewport(1920, 1080))
-	if err != nil {
-		fmt.Println("设置窗口大小时出错:", err)
-		return
-	}
+	_ = chromedp.Run(s.ctx, chromedp.EmulateViewport(1920, 1080))
 }
-func (s *ServerModel) Xt() (int, string, string) {
-	s.Init()
-	s.playUrl = ""
-	// 导航到网页
-	fmt.Println("网页:", s.Url)
+func (s *Model) StartFindResource() (string, error) {
+	defer s.Cancel()
+
+	// 打开网页
 	err := chromedp.Run(s.ctx, chromedp.Navigate(s.Url))
 	if err != nil {
-		fmt.Println("导航到网页时出错:", err)
-		s.Cancel()
-		return 404, "导航到网页时出错", ""
+		return "", err
 	}
 
+	// 监听请求日志
+	s.needListen = true
+	s.listenForNetworkEvent()
+
+	// 等待网页加载完成
 	if len(s.Data.Wait) > 0 {
-		//fmt.Println("等待网页加载完成")
 		for _, wait := range s.Data.Wait {
 			err = chromedp.Run(s.ctx, chromedp.WaitVisible(wait))
 			if err != nil {
-				fmt.Println("等待网页加载完成时出错:", err)
-				s.Cancel()
-				return 404, "等待网页加载完成时出错", ""
+				return "", err
 			}
 		}
-		//fmt.Println("网页加载完成")
-	} else {
-		err = chromedp.Run(s.ctx, chromedp.WaitVisible("body"))
-		if err != nil {
-			fmt.Println("等待网页加载完成时出错:", err)
-			s.Cancel()
-			return 404, "等待网页加载完成时出错", ""
-		}
 	}
+
+	// 点击页面元素
 	if len(s.Data.Click) > 0 {
-		//fmt.Println("等待点击完成")
 		for _, click := range s.Data.Click {
 			err = chromedp.Run(s.ctx, chromedp.Click(click))
 			if err != nil {
-				fmt.Println("点击网页元素失败:", err)
-				s.Cancel()
-				return 404, "点击网页元素失败", ""
+				return "", err
 			}
 		}
-		//fmt.Println("点击完成")
 	}
-
-	//fmt.Println("监听请求日志")
-	s.needListen = true
-	s.listenForNetworkEvent()
 
 	var i = 0
 	for s.playUrl == "" {
@@ -104,34 +82,44 @@ func (s *ServerModel) Xt() (int, string, string) {
 			fmt.Println("监听超时")
 			break
 		}
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Millisecond * 500)
 	}
-	s.Cancel()
 	if len(s.playUrl) != 0 {
-		fmt.Println("play", s.playUrl)
-		return 200, "解析成功", s.playUrl
+		return s.playUrl, nil
 	}
-	return 404, "解析失败", ""
+	return "", fmt.Errorf("解析失败")
 }
-func (s *ServerModel) listenForNetworkEvent() {
+func (s *Model) listenForNetworkEvent() {
 	chromedp.ListenTarget(s.ctx, func(ev interface{}) {
 		if s.needListen {
 			switch ev := ev.(type) {
 			case *network.EventResponseReceived:
 				resp := ev.Response
-				if len(resp.Headers) != 0 {
-					for _, suf := range s.Data.Suf {
-						if strings.Contains(resp.URL, suf) {
-							if len(s.Data.Black) > 0 {
-								for _, black := range s.Data.Black {
-									if len(black) != 0 && strings.Contains(resp.URL, black) == false {
-										s.playUrl = resp.URL
-										s.needListen = false
+				fmt.Println(resp.Headers["content-type"], resp.URL)
+				if len(resp.Headers) > 0 {
+					if len(s.Data.ContentType) > 0 {
+						for _, contentType := range s.Data.ContentType {
+							if resp.Headers["content-type"] == contentType {
+								if len(s.Data.White) > 0 {
+									for _, suf := range s.Data.White {
+										if strings.Contains(resp.URL, suf) {
+											if len(s.Data.Black) > 0 {
+												for _, black := range s.Data.Black {
+													if len(black) != 0 && strings.Contains(resp.URL, black) == false {
+														s.playUrl = resp.URL
+														s.needListen = false
+													}
+												}
+											} else {
+												s.playUrl = resp.URL
+												s.needListen = false
+											}
+										}
 									}
+								} else {
+									s.playUrl = resp.URL
+									s.needListen = false
 								}
-							} else {
-								s.playUrl = resp.URL
-								s.needListen = false
 							}
 						}
 					}
@@ -140,8 +128,7 @@ func (s *ServerModel) listenForNetworkEvent() {
 		}
 	})
 }
-
-func (s *ServerModel) Cancel() {
+func (s *Model) Cancel() {
 	for _, cancelFunc := range s.cancel {
 		cancelFunc()
 	}

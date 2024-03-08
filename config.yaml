@@ -1,17 +1,27 @@
 port: 8080
-headless: true
+headless: false
 hc_time: 300
 parse:
+  - name: "西瓜视频" # 名称
+    match: # 资源特征
+      - "ixigua.com"
+    wait: # 等待此元素加载成功（使用css选择器）
+    click: # 点击此元素（使用css选择器）
+    contentType: # 查找资源的 content-type
+      - "application/vnd.apple.mpegurl"
+      - "video/mp4"
+    white: # 资源链接特征 白名单
+      - "media-video-avc1"
+    black: # 资源链接特征 黑名单
+
   - name: "测试"
     match:
-      - "ggys.me"
-    start: ""
-    end: ""
-    suf:
-      - ".mp4"
-      - ".m3u8"
+      - "xxxx"
     wait:
-      - ".prism-big-play-btn"
     click:
-      - ".prism-big-play-btn"
+    contentType:
+      - "application/vnd.apple.mpegurl"
+      - "video/mp4"
+    white:
+      - ".m3u8"
     black:
