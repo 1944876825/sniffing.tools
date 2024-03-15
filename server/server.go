@@ -43,6 +43,12 @@ func (s *Model) Init() {
 }
 func (s *Model) StartFindResource() (string, error) {
 	defer s.Cancel()
+	if len(s.Data.White) < 1 {
+		s.Data.White = []string{".mp4", ".m3u8", ".flv"}
+	}
+	// 监听请求日志
+	s.needListen = true
+	s.listenForNetworkEvent()
 
 	// 打开网页
 	err := chromedp.Run(s.ctx, chromedp.Navigate(s.Url))
@@ -50,39 +56,26 @@ func (s *Model) StartFindResource() (string, error) {
 		return "", err
 	}
 
-	// 监听请求日志
-	s.needListen = true
-	s.listenForNetworkEvent()
-
 	// 等待网页加载完成
 	if len(s.Data.Wait) > 0 {
-		for _, wait := range s.Data.Wait {
-			err = chromedp.Run(s.ctx, chromedp.WaitVisible(wait))
-			if err != nil {
-				return "", err
+		go func() {
+			if len(s.Data.Click) > 0 {
+				for _, click := range s.Data.Click {
+					_ = chromedp.Run(s.ctx, chromedp.Click(click))
+				}
 			}
-		}
-	}
-
-	// 点击页面元素
-	if len(s.Data.Click) > 0 {
-		for _, click := range s.Data.Click {
-			err = chromedp.Run(s.ctx, chromedp.Click(click))
-			if err != nil {
-				return "", err
-			}
-		}
+		}()
 	}
 
 	var i = 0
 	for s.playUrl == "" {
 		i++
-		if i > 300 {
+		if i > config.Config.XtTime*5 {
 			s.needListen = false
 			fmt.Println("监听超时")
 			break
 		}
-		time.Sleep(time.Millisecond * 500)
+		time.Sleep(time.Millisecond * 200)
 	}
 	if len(s.playUrl) != 0 {
 		return s.playUrl, nil
@@ -93,34 +86,39 @@ func (s *Model) listenForNetworkEvent() {
 	chromedp.ListenTarget(s.ctx, func(ev interface{}) {
 		if s.needListen {
 			switch ev := ev.(type) {
+			case *network.EventRequestWillBeSent:
+				req := ev.Request
+				//log.Println("req url", req.URL)
+				for _, suf := range s.Data.White {
+					if strings.Contains(req.URL, suf) {
+						if len(s.Data.Black) > 0 {
+							for _, black := range s.Data.Black {
+								if len(black) != 0 && strings.Contains(req.URL, black) == false {
+									s.playUrl = req.URL
+									s.needListen = false
+								}
+							}
+						} else {
+							s.playUrl = req.URL
+							s.needListen = false
+						}
+					}
+				}
 			case *network.EventResponseReceived:
 				resp := ev.Response
-				fmt.Println(resp.Headers["content-type"], resp.URL)
-				if len(resp.Headers) > 0 {
-					if len(s.Data.ContentType) > 0 {
-						for _, contentType := range s.Data.ContentType {
-							if resp.Headers["content-type"] == contentType {
-								if len(s.Data.White) > 0 {
-									for _, suf := range s.Data.White {
-										if strings.Contains(resp.URL, suf) {
-											if len(s.Data.Black) > 0 {
-												for _, black := range s.Data.Black {
-													if len(black) != 0 && strings.Contains(resp.URL, black) == false {
-														s.playUrl = resp.URL
-														s.needListen = false
-													}
-												}
-											} else {
-												s.playUrl = resp.URL
-												s.needListen = false
-											}
-										}
-									}
-								} else {
+				//log.Println("resp url", resp.URL)
+				for _, suf := range s.Data.White {
+					if strings.Contains(resp.URL, suf) {
+						if len(s.Data.Black) > 0 {
+							for _, black := range s.Data.Black {
+								if len(black) != 0 && strings.Contains(resp.URL, black) == false {
 									s.playUrl = resp.URL
 									s.needListen = false
 								}
 							}
+						} else {
+							s.playUrl = resp.URL
+							s.needListen = false
 						}
 					}
 				}

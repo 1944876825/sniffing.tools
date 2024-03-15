@@ -1,27 +1,17 @@
-port: 8080
-headless: false
-hc_time: 300
+port: 8081
+headless: false # true 不弹出浏览器 false 弹窗浏览器
+hc_time: 300 # 缓存保存时间 单位：秒
+xt_time: 300 # 嗅探超时时间 单位：秒
 parse:
   - name: "西瓜视频" # 名称
     match: # 资源特征
       - "ixigua.com"
-    wait: # 等待此元素加载成功（使用css选择器）
     click: # 点击此元素（使用css选择器）
-    contentType: # 查找资源的 content-type
-      - "application/vnd.apple.mpegurl"
-      - "video/mp4"
+      - "video" # 点击video标签
     white: # 资源链接特征 白名单
       - "media-video-avc1"
-    black: # 资源链接特征 黑名单
-
-  - name: "测试"
-    match:
-      - "xxxx"
-    wait:
-    click:
-    contentType:
-      - "application/vnd.apple.mpegurl"
-      - "video/mp4"
-    white:
+      - ".mp4"
       - ".m3u8"
-    black:
+      - ".flv"
+    black: # 资源链接特征 黑名单
+      - "gg.mp4"

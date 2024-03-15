@@ -22,6 +22,9 @@ type UrlItemModel struct {
 var Urls = make(map[string]UrlItemModel)
 
 func main() {
+	fmt.Println("作者：By易仝 QQ：1944876825")
+	fmt.Println("开源地址：https://github.com/1944876825/sniffing.tools")
+
 	// 获取yaml配置
 	config.Config.GetConfig()
 
@@ -32,7 +35,7 @@ func main() {
 	// 嗅探
 	r.GET("/xt", router)
 
-	fmt.Println("API:", fmt.Sprintf("http://127.0.0.1:%d/xt?url=", config.Config.Port))
+	fmt.Println("程序启动成功 API:", fmt.Sprintf("http://127.0.0.1:%d/xt?url=", config.Config.Port))
 	err := r.Run(fmt.Sprintf(":%d", config.Config.Port))
 	if err != nil {
 		fmt.Println("启动失败", err)
@@ -45,7 +48,7 @@ func router(c *gin.Context) {
 	url := c.Query("url")
 	url = strings.TrimSpace(url)
 	log.Println("url:", url)
-	if len(url) == 0 {
+	if len(url) < 1 {
 		c.JSON(200, gin.H{"code": 404, "msg": "缺少URL"})
 		return
 	}
@@ -92,6 +95,7 @@ func router(c *gin.Context) {
 func toParse(url string) {
 	var mat = false
 	var cuParse = config.ParseItemModel{}
+
 	for _, parse := range config.Config.Parse {
 		for _, match := range parse.Match {
 			if strings.Contains(url, match) {
@@ -109,23 +113,20 @@ func toParse(url string) {
 	ser.Url = url
 	ser.Data = cuParse
 
-	if mat {
-		if len(cuParse.Start) > 0 {
-			ser.Url = cuParse.Start + ser.Url
-		}
-		if len(cuParse.End) > 0 {
-			ser.Url = ser.Url + cuParse.End
-		}
-	} else {
-		ser.Data.ContentType = []string{
-			"application/vnd.apple.mpegurl",
-			"video/mp4",
-		}
-	}
+	//if mat {
+	//	if len(cuParse.Start) > 0 {
+	//		ser.Url = cuParse.Start + ser.Url
+	//	}
+	//	if len(cuParse.End) > 0 {
+	//		ser.Url = ser.Url + cuParse.End
+	//	}
+	//}
 	ser.Init()
 	playUrl, err := ser.StartFindResource()
+
 	timestamp := time.Now().Unix()
 	futureTimestamp := timestamp + config.Config.HcTime
+
 	if err == nil {
 		Urls[getMD5(url)] = UrlItemModel{
 			Status:  1,

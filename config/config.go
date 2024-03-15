@@ -11,6 +11,7 @@ var Config = configModel{}
 type configModel struct {
 	Port     int   `yaml:"port"`
 	HcTime   int64 `yaml:"hc_time"`
+	XtTime   int   `yaml:"xt_time"`
 	Headless bool  `yaml:"headless"`
 	Parse    []ParseItemModel
 }
