@@ -64,7 +64,7 @@ func router(c *gin.Context) {
 	md5Url := getMD5(url)
 	log.Println("url: ", url)
 	if len(url) < 1 {
-		c.JSON(200, gin.H{"code": 404, "msg": "缺少URL"})
+		c.IndentedJSON(200, gin.H{"code": 404, "msg": "缺少URL"})
 		return
 	}
 	if config.Config.Hc && Urls[md5Url].Status == 1 {
@@ -73,7 +73,7 @@ func router(c *gin.Context) {
 		if timestamp < timeExp {
 			end := time.Now()
 			duration := end.Sub(start)
-			c.JSON(200, gin.H{
+			c.IndentedJSON(200, gin.H{
 				"code": 200,
 				"msg":  "解析成功",
 				"type": "缓存",
@@ -101,7 +101,7 @@ func router(c *gin.Context) {
 	end := time.Now()
 	duration := end.Sub(start)
 	if Urls[md5Url].PlayUrl != "" {
-		c.JSON(200, gin.H{
+		c.IndentedJSON(200, gin.H{
 			"code": 200,
 			"msg":  "解析成功",
 			"type": "最新",
@@ -109,7 +109,7 @@ func router(c *gin.Context) {
 			"url":  Urls[md5Url].PlayUrl,
 		})
 	} else {
-		c.JSON(200, gin.H{
+		c.IndentedJSON(200, gin.H{
 			"code": 404,
 			"msg":  "解析失败",
 			"time": duration.Seconds(),
