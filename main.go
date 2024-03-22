@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"log"
+	"os"
+	"os/signal"
 	"sniffing.tools/config"
 	"sniffing.tools/server"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -22,6 +25,15 @@ type UrlItemModel struct {
 var Urls = make(map[string]UrlItemModel)
 
 func main() {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// 主函数
+	go func() {
+		<-signalChan
+		server.CloseServers() // 确保关闭浏览器
+		os.Exit(0)            // 退出程序
+	}()
 	fmt.Println("作者：By易仝 QQ：1944876825")
 	fmt.Println("开源地址：https://github.com/1944876825/sniffing.tools")
 
@@ -46,44 +58,46 @@ func main() {
 // router 路由
 func router(c *gin.Context) {
 	url := c.Query("url")
+	proxy := c.Query("proxy")
 	url = strings.TrimSpace(url)
-	log.Println("url:", url)
+	md5Url := getMD5(url)
+	log.Println("url: ", url)
 	if len(url) < 1 {
 		c.JSON(200, gin.H{"code": 404, "msg": "缺少URL"})
 		return
 	}
-	if Urls[getMD5(url)].Status == 1 {
+	if config.Config.Hc && Urls[md5Url].Status == 1 {
 		timestamp := time.Now().Unix()
-		timeExp, _ := strconv.ParseInt(Urls[getMD5(url)].TimeExp, 10, 64)
+		timeExp, _ := strconv.ParseInt(Urls[md5Url].TimeExp, 10, 64)
 		if timestamp < timeExp {
 			c.JSON(200, gin.H{
 				"code": 200,
 				"msg":  "解析成功",
-				"url":  Urls[getMD5(url)].PlayUrl,
+				"url":  Urls[md5Url].PlayUrl,
 			})
 			return
 		}
 	}
-	if Urls[getMD5(url)].Status == 2 {
-		for Urls[getMD5(url)].Status == 2 {
+	if Urls[md5Url].Status == 2 {
+		for Urls[md5Url].Status == 2 {
 			time.Sleep(time.Millisecond * 200)
 		}
 	} else {
-		Urls[getMD5(url)] = UrlItemModel{
+		Urls[md5Url] = UrlItemModel{
 			Status:  2,
 			PlayUrl: "",
 			TimeExp: "",
 		}
-		go toParse(url)
-		for Urls[getMD5(url)].Status == 2 {
+		go toParse(url, proxy)
+		for Urls[md5Url].Status == 2 {
 			time.Sleep(time.Millisecond * 200)
 		}
 	}
-	if Urls[getMD5(url)].PlayUrl != "" {
+	if Urls[md5Url].PlayUrl != "" {
 		c.JSON(200, gin.H{
 			"code": 200,
 			"msg":  "解析成功",
-			"url":  Urls[getMD5(url)].PlayUrl,
+			"url":  Urls[md5Url].PlayUrl,
 		})
 	} else {
 		c.JSON(200, gin.H{
@@ -92,7 +106,7 @@ func router(c *gin.Context) {
 		})
 	}
 }
-func toParse(url string) {
+func toParse(url, proxy string) {
 	var mat = false
 	var cuParse = config.ParseItemModel{}
 
@@ -109,26 +123,16 @@ func toParse(url string) {
 		}
 	}
 
-	var ser = server.Model{}
-	ser.Url = url
+	ser := server.GetServer()
+	ser.Init(proxy)
 	ser.Data = cuParse
-
-	//if mat {
-	//	if len(cuParse.Start) > 0 {
-	//		ser.Url = cuParse.Start + ser.Url
-	//	}
-	//	if len(cuParse.End) > 0 {
-	//		ser.Url = ser.Url + cuParse.End
-	//	}
-	//}
-	ser.Init()
-	playUrl, err := ser.StartFindResource()
+	playUrl, err := ser.StartFindResource(url)
 
 	timestamp := time.Now().Unix()
 	futureTimestamp := timestamp + config.Config.HcTime
-
+	md5Url := getMD5(url)
 	if err == nil {
-		Urls[getMD5(url)] = UrlItemModel{
+		Urls[md5Url] = UrlItemModel{
 			Status:  1,
 			PlayUrl: playUrl,
 			TimeExp: strconv.FormatInt(futureTimestamp, 10),
@@ -136,7 +140,7 @@ func toParse(url string) {
 		return
 	}
 	log.Println("解析失败", err.Error())
-	Urls[getMD5(url)] = UrlItemModel{
+	Urls[md5Url] = UrlItemModel{
 		Status:  3,
 		PlayUrl: playUrl,
 		TimeExp: strconv.FormatInt(futureTimestamp, 10),
