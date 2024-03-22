@@ -57,6 +57,7 @@ func main() {
 
 // router 路由
 func router(c *gin.Context) {
+	start := time.Now()
 	url := c.Query("url")
 	proxy := c.Query("proxy")
 	url = strings.TrimSpace(url)
@@ -70,9 +71,13 @@ func router(c *gin.Context) {
 		timestamp := time.Now().Unix()
 		timeExp, _ := strconv.ParseInt(Urls[md5Url].TimeExp, 10, 64)
 		if timestamp < timeExp {
+			end := time.Now()
+			duration := end.Sub(start)
 			c.JSON(200, gin.H{
 				"code": 200,
 				"msg":  "解析成功",
+				"type": "缓存",
+				"time": duration.Seconds(),
 				"url":  Urls[md5Url].PlayUrl,
 			})
 			return
@@ -93,16 +98,21 @@ func router(c *gin.Context) {
 			time.Sleep(time.Millisecond * 200)
 		}
 	}
+	end := time.Now()
+	duration := end.Sub(start)
 	if Urls[md5Url].PlayUrl != "" {
 		c.JSON(200, gin.H{
 			"code": 200,
 			"msg":  "解析成功",
+			"type": "最新",
+			"time": duration.Seconds(),
 			"url":  Urls[md5Url].PlayUrl,
 		})
 	} else {
 		c.JSON(200, gin.H{
 			"code": 404,
 			"msg":  "解析失败",
+			"time": duration.Seconds(),
 		})
 	}
 }
