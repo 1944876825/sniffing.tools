@@ -1,4 +1,4 @@
-package server
+package sniffing
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 	"log"
+	"os"
+	"path/filepath"
 	"sniffing.tools/config"
 	"strings"
 	"sync"
@@ -14,36 +16,39 @@ import (
 
 var mutex sync.Mutex
 
-func GetServer() *Model {
+func New(p *config.ParseItemModel) *ChromeDp {
+	// 如果浏览器数量大于最大数量，等待
 	if len(Servers) >= config.Config.XcMax {
 		for len(Servers) >= config.Config.XcMax {
 			time.Sleep(time.Millisecond * 200)
 		}
 	}
-	xc := &Model{}
+	xc := &ChromeDp{
+		data: p,
+	}
 	mutex.Lock()
 	Servers = append(Servers, xc)
 	mutex.Unlock()
 	return xc
 }
 
-var Servers []*Model
+var Servers []*ChromeDp
 
-type Model struct {
-	Data       config.ParseItemModel
+type ChromeDp struct {
+	data       *config.ParseItemModel
 	ctx        context.Context
 	playUrl    string
 	needListen bool
 	cancel     []context.CancelFunc
 }
 
-func (s *Model) Init(proxy string) {
-	// 创建Chrome浏览器上下文
-	//var cancel context.CancelFunc
-	//s.ctx, cancel = chromedp.NewContext(context.Background())
-	//s.cancel = append(s.cancel, cancel)
+func (s *ChromeDp) Init(proxy string) {
+	currentDir, _ := os.Getwd()
+	dir := filepath.Join(currentDir, ".cache")
+
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", config.Config.Headless), // 设置为true将在后台运行Chrome
+		chromedp.Flag("user-data-dir", dir),               // 将缓存放在 .cache 目录下
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
@@ -56,39 +61,55 @@ func (s *Model) Init(proxy string) {
 		opts = append(opts, chromedp.ProxyServer(proxy))
 	}
 	// 创建Chrome浏览器实例
-	//var allocCtx context.Context
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	s.cancel = append(s.cancel, cancel)
 	// 创建新的Chrome浏览器上下文
 	s.ctx, cancel = chromedp.NewContext(allocCtx)
 	s.cancel = append(s.cancel, cancel)
 	// 监听请求日志
-	s.listenForNetworkEvent()
+	s.listen()
 
 	// 设置窗口大小
 	//_ = chromedp.Run(s.ctx, chromedp.EmulateViewport(1920, 1080))
 	// 打开网页
 	//_ = chromedp.Run(s.ctx, chromedp.Navigate("about:blank"))
 }
-func (s *Model) StartFindResource(url string) (string, error) {
+func (s *ChromeDp) Run(url string) (string, error) {
 	defer s.Cancel()
 	s.needListen = true
 
-	if len(s.Data.White) < 1 {
-		s.Data.White = []string{".mp4", ".m3u8", ".flv"}
+	if len(s.data.White) < 1 {
+		s.data.White = []string{".mp4", ".m3u8", ".flv"}
 	}
-
+	var task chromedp.Tasks
+	if s.data.Headers != nil {
+		log.Println("已设置header", s.data.Headers)
+		//networkConditions := network.NewNetworkConditions().
+		//	SetRequestHeaders(network.RequestHeaders{
+		//		"referer": "http://example.com",
+		//	})
+		task = chromedp.Tasks{
+			network.Enable(),
+			network.SetExtraHTTPHeaders(network.Headers(map[string]interface{}{
+				"X-Header": "my request header",
+				"referer":  "https://jx.m3u8zy.top/",
+			})),
+		}
+		//browserContext := chromedp.WithNewBrowserContext()
+	}
 	// 打开网页
-	err := chromedp.Run(s.ctx, chromedp.Navigate(url))
+	err := chromedp.Run(s.ctx,
+		task,
+		chromedp.Navigate(url))
 	if err != nil {
 		return "", err
 	}
 
 	// 等待网页加载完成
-	if len(s.Data.Wait) > 0 {
+	if len(s.data.Wait) > 0 {
 		go func() {
-			if len(s.Data.Click) > 0 {
-				for _, click := range s.Data.Click {
+			if len(s.data.Click) > 0 {
+				for _, click := range s.data.Click {
 					_ = chromedp.Run(s.ctx, chromedp.Click(click))
 				}
 			}
@@ -110,21 +131,26 @@ func (s *Model) StartFindResource(url string) (string, error) {
 	}
 	return "", fmt.Errorf("解析失败")
 }
-func (s *Model) listenForNetworkEvent() {
+func (s *ChromeDp) listen() {
 	chromedp.ListenTarget(s.ctx, func(ev interface{}) {
 		if s.needListen {
 			switch ev := ev.(type) {
 			case *network.EventRequestWillBeSent:
 				req := ev.Request
 				//log.Println("req url", req.URL)
-				for _, suf := range s.Data.White {
+				for _, suf := range s.data.White {
 					if strings.Contains(req.URL, suf) {
-						if len(s.Data.Black) > 0 {
-							for _, black := range s.Data.Black {
-								if len(black) != 0 && strings.Contains(req.URL, black) == false {
-									s.playUrl = req.URL
-									s.needListen = false
+						if len(s.data.Black) > 0 {
+							var isBlack = false
+							for _, black := range s.data.Black {
+								if len(black) != 0 && strings.Contains(req.URL, black) == true {
+									isBlack = true
+									break
 								}
+							}
+							if isBlack == false {
+								s.playUrl = req.URL
+								s.needListen = false
 							}
 						} else {
 							s.playUrl = req.URL
@@ -135,14 +161,19 @@ func (s *Model) listenForNetworkEvent() {
 			case *network.EventResponseReceived:
 				resp := ev.Response
 				//log.Println("resp url", resp.URL)
-				for _, suf := range s.Data.White {
+				for _, suf := range s.data.White {
 					if strings.Contains(resp.URL, suf) {
-						if len(s.Data.Black) > 0 {
-							for _, black := range s.Data.Black {
-								if len(black) != 0 && strings.Contains(resp.URL, black) == false {
-									s.playUrl = resp.URL
-									s.needListen = false
+						if len(s.data.Black) > 0 {
+							var isBlack = false
+							for _, black := range s.data.Black {
+								if len(black) != 0 && strings.Contains(resp.URL, black) == true {
+									isBlack = true
+									break
 								}
+							}
+							if isBlack == false {
+								s.playUrl = resp.URL
+								s.needListen = false
 							}
 						} else {
 							s.playUrl = resp.URL
@@ -154,7 +185,7 @@ func (s *Model) listenForNetworkEvent() {
 		}
 	})
 }
-func (s *Model) Cancel() {
+func (s *ChromeDp) Cancel() {
 	log.Println("len1", len(Servers))
 	removeServer(s)
 	log.Println("len2", len(Servers))
@@ -162,7 +193,7 @@ func (s *Model) Cancel() {
 		cancelFunc()
 	}
 }
-func removeServer(serverToRemove *Model) {
+func removeServer(serverToRemove *ChromeDp) {
 	for i, server := range Servers {
 		if server == serverToRemove {
 			Servers = append(Servers[:i], Servers[i+1:]...)

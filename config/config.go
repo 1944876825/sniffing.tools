@@ -19,15 +19,16 @@ type configModel struct {
 	Parse    []ParseItemModel
 }
 type ParseItemModel struct {
-	Name        string   `yaml:"name"`
-	Match       []string `yaml:"match"`
-	Start       string   `yaml:"start"`
-	End         string   `yaml:"end"`
-	Wait        []string `yaml:"wait"`
-	Click       []string `yaml:"click"`
-	ContentType []string `yaml:"contentType"`
-	White       []string `yaml:"white"`
-	Black       []string `yaml:"black"`
+	Name        string                 `yaml:"name"`
+	Match       []string               `yaml:"match"`
+	Start       string                 `yaml:"start"`
+	End         string                 `yaml:"end"`
+	Wait        []string               `yaml:"wait"`
+	Click       []string               `yaml:"click"`
+	ContentType []string               `yaml:"contentType"`
+	White       []string               `yaml:"white"`
+	Black       []string               `yaml:"black"`
+	Headers     map[string]interface{} `yaml:"headers"`
 }
 
 func (c *configModel) GetConfig() {
