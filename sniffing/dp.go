@@ -116,12 +116,23 @@ func (s *ChromeDp) Run(url string) (string, error) {
 		}()
 	}
 
+	var dpDone = false
+	go func() {
+		select {
+		case <-s.ctx.Done():
+			dpDone = true
+		}
+	}()
 	var i = 0
-	for s.playUrl == "" {
+	for {
 		i++
 		if i > config.Config.XtTime*20 {
 			s.needListen = false
-			fmt.Println("监听超时")
+			log.Println("监听超时")
+			break
+		}
+		if dpDone {
+			log.Println("浏览器关闭")
 			break
 		}
 		time.Sleep(time.Millisecond * 50)
@@ -132,12 +143,15 @@ func (s *ChromeDp) Run(url string) (string, error) {
 	return "", fmt.Errorf("解析失败")
 }
 func (s *ChromeDp) listen() {
+	IsLogUrl := config.Config.IsLogUrl
 	chromedp.ListenTarget(s.ctx, func(ev interface{}) {
 		if s.needListen {
 			switch ev := ev.(type) {
-			case *network.EventRequestWillBeSent:
+			case *network.EventRequestWillBeSent: // 发送
 				req := ev.Request
-				//log.Println("req url", req.URL)
+				if IsLogUrl {
+					log.Println("req url", req.URL)
+				}
 				for _, suf := range s.data.White {
 					if strings.Contains(req.URL, suf) {
 						if len(s.data.Black) > 0 {
@@ -158,9 +172,11 @@ func (s *ChromeDp) listen() {
 						}
 					}
 				}
-			case *network.EventResponseReceived:
+			case *network.EventResponseReceived: // 接收
 				resp := ev.Response
-				//log.Println("resp url", resp.URL)
+				if IsLogUrl {
+					log.Println("resp url", resp.URL)
+				}
 				for _, suf := range s.data.White {
 					if strings.Contains(resp.URL, suf) {
 						if len(s.data.Black) > 0 {
@@ -186,13 +202,13 @@ func (s *ChromeDp) listen() {
 	})
 }
 func (s *ChromeDp) Cancel() {
-	log.Println("len1", len(Servers))
 	removeServer(s)
-	log.Println("len2", len(Servers))
 	for _, cancelFunc := range s.cancel {
 		cancelFunc()
 	}
 }
+
+// 清除已经解析成功的ChromeDp实例
 func removeServer(serverToRemove *ChromeDp) {
 	for i, server := range Servers {
 		if server == serverToRemove {
@@ -201,6 +217,8 @@ func removeServer(serverToRemove *ChromeDp) {
 		}
 	}
 }
+
+// CloseServers 关闭所有ChromeDp实例
 func CloseServers() {
 	for _, xc := range Servers {
 		xc.Cancel()

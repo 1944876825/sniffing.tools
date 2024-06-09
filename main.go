@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"sniffing.tools/config"
 	"sniffing.tools/sniffing"
+	"sniffing.tools/utils"
 	"syscall"
 )
 
@@ -15,6 +16,11 @@ func main() {
 	fmt.Println("开源地址：https://github.com/1944876825/sniffing.tools")
 	gin.SetMode(gin.ReleaseMode)
 	config.Config.GetConfig()
+
+	if config.Config.IsLogLocal {
+		utils.OpenLogLocal()
+	}
+
 	quit()
 	startGin()
 }
@@ -36,7 +42,8 @@ func quit() {
 
 	go func() {
 		<-signalChan
-		sniffing.CloseServers() // 确保关闭浏览器
-		os.Exit(0)              // 退出程序
+		sniffing.CloseServers()
+		utils.CloseLogLocal()
+		os.Exit(0) // 退出程序
 	}()
 }

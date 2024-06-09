@@ -9,14 +9,16 @@ import (
 var Config = configModel{}
 
 type configModel struct {
-	Port     int    `yaml:"port"`
-	Hc       bool   `yaml:"hc"`
-	HcTime   int64  `yaml:"hc_time"`
-	XtTime   int    `yaml:"xt_time"`
-	Headless bool   `yaml:"headless"`
-	Proxy    string `yaml:"proxy"`
-	XcMax    int    `yaml:"xc_max"`
-	Parse    []ParseItemModel
+	Port       int    `yaml:"port"`
+	Hc         bool   `yaml:"hc"`
+	HcTime     int64  `yaml:"hc_time"`
+	XtTime     int    `yaml:"xt_time"`
+	Headless   bool   `yaml:"headless"`
+	Proxy      string `yaml:"proxy"`
+	XcMax      int    `yaml:"xc_max"`
+	IsLogLocal bool   `yaml:"is_log_local"`
+	IsLogUrl   bool   `yaml:"is_log_url"`
+	Parse      []ParseItemModel
 }
 type ParseItemModel struct {
 	Name        string                 `yaml:"name"`

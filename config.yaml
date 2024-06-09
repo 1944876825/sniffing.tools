@@ -8,6 +8,10 @@ hc_time: 300 # 缓存保存时间 单位：秒
 xt_time: 300 # 嗅探超时时间 单位：秒
 xc_max: 3 # 最多打开几个浏览器
 proxy:  # 默认代理，不填就不同代理，填了就是默认代理，如果需要动态代理，请在访问接口时添加参数 proxy 如：http://127.0.0.1:8081/xt?proxy=112.30.155.83:12792&url=
+proxy_api: # 代理api
+is_log_local: false # 是否将日志输出到本地，文件名 log.txt
+is_log_url: false # 是否打印被嗅探网站的请求链接
+
 parse:  # 嗅探规则，特殊资源特殊对待
   - name: "西瓜视频" # 名称
     match: # 资源特征
