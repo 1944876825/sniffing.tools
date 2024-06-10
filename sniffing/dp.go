@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sniffing.tools/config"
+	"sniffing.tools/utils"
 	"strings"
 	"sync"
 	"time"
@@ -16,20 +17,23 @@ import (
 
 var mutex sync.Mutex
 
-func New(p *config.ParseItemModel) *ChromeDp {
+func New() (*ChromeDp, error) {
 	// 如果浏览器数量大于最大数量，等待
 	if len(Servers) >= config.Config.XcMax {
+		if config.Config.XcOut == 1 {
+			return nil, fmt.Errorf("超出最大浏览器数量")
+		}
 		for len(Servers) >= config.Config.XcMax {
-			time.Sleep(time.Millisecond * 200)
+			time.Sleep(time.Millisecond * 1000)
 		}
 	}
 	xc := &ChromeDp{
-		data: p,
+		finish: make(chan struct{}),
 	}
 	mutex.Lock()
 	Servers = append(Servers, xc)
 	mutex.Unlock()
-	return xc
+	return xc, nil
 }
 
 var Servers []*ChromeDp
@@ -38,10 +42,14 @@ type ChromeDp struct {
 	data       *config.ParseItemModel
 	ctx        context.Context
 	playUrl    string
+	finish     chan struct{}
 	needListen bool
 	cancel     []context.CancelFunc
 }
 
+func (s *ChromeDp) SetData(data *config.ParseItemModel) {
+	s.data = data
+}
 func (s *ChromeDp) Init(proxy string) {
 	currentDir, _ := os.Getwd()
 	dir := filepath.Join(currentDir, ".cache")
@@ -53,11 +61,15 @@ func (s *ChromeDp) Init(proxy string) {
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
 	)
+
 	if proxy == "" && config.Config.Proxy != "" {
 		proxy = config.Config.Proxy
 	}
+	if proxy == "" && config.Config.ProxyApi != "" {
+		proxy = utils.GetProxy()
+	}
 	if proxy != "" {
-		log.Println("使用代理：", proxy, "访问")
+		log.Println("使用代理：", proxy)
 		opts = append(opts, chromedp.ProxyServer(proxy))
 	}
 	// 创建Chrome浏览器实例
@@ -67,7 +79,7 @@ func (s *ChromeDp) Init(proxy string) {
 	s.ctx, cancel = chromedp.NewContext(allocCtx)
 	s.cancel = append(s.cancel, cancel)
 	// 监听请求日志
-	s.listen()
+	go s.listen()
 
 	// 设置窗口大小
 	//_ = chromedp.Run(s.ctx, chromedp.EmulateViewport(1920, 1080))
@@ -97,47 +109,51 @@ func (s *ChromeDp) Run(url string) (string, error) {
 		}
 		//browserContext := chromedp.WithNewBrowserContext()
 	}
-	// 打开网页
-	err := chromedp.Run(s.ctx,
-		task,
-		chromedp.Navigate(url))
-	if err != nil {
-		return "", err
-	}
-
-	// 等待网页加载完成
-	if len(s.data.Wait) > 0 {
-		go func() {
-			if len(s.data.Click) > 0 {
-				for _, click := range s.data.Click {
-					_ = chromedp.Run(s.ctx, chromedp.Click(click))
-				}
+	go func() {
+		// 打开网页
+		err := chromedp.Run(s.ctx,
+			task,
+			chromedp.Navigate(url))
+		if err != nil {
+			log.Println("网页加载失败", err)
+			return
+		}
+		// 等待网页加载完成
+		if len(s.data.Wait) > 0 {
+			for _, wait := range s.data.Wait {
+				_ = chromedp.Run(s.ctx, chromedp.WaitVisible(wait))
 			}
-		}()
-	}
+		}
+		// 点击页面元素
+		if len(s.data.Click) > 0 {
+			for _, click := range s.data.Click {
+				_ = chromedp.Run(s.ctx, chromedp.Click(click))
+			}
+		}
+	}()
 
 	var dpDone = false
 	go func() {
 		select {
 		case <-s.ctx.Done():
-			dpDone = true
+		case <-s.finish:
 		}
+		dpDone = true
 	}()
 	var i = 0
 	for {
-		i++
-		if i > config.Config.XtTime*20 {
-			s.needListen = false
-			log.Println("监听超时")
-			break
-		}
 		if dpDone {
-			log.Println("浏览器关闭")
 			break
 		}
-		time.Sleep(time.Millisecond * 500)
+		i++
+		if i > config.Config.XtTime {
+			s.done("")
+			log.Println("嗅探超时")
+			break
+		}
+		time.Sleep(time.Second * 1)
 	}
-	if len(s.playUrl) != 0 {
+	if s.playUrl != "" {
 		return s.playUrl, nil
 	}
 	return "", fmt.Errorf("解析失败")
@@ -150,50 +166,44 @@ func (s *ChromeDp) listen() {
 			case *network.EventRequestWillBeSent: // 发送
 				req := ev.Request
 				if IsLogUrl {
-					log.Println("req url", req.URL)
+					log.Println("send", req.URL)
 				}
 				for _, suf := range s.data.White {
 					if strings.Contains(req.URL, suf) {
+						var isBlack = false
 						if len(s.data.Black) > 0 {
-							var isBlack = false
 							for _, black := range s.data.Black {
 								if len(black) != 0 && strings.Contains(req.URL, black) == true {
 									isBlack = true
 									break
 								}
 							}
-							if isBlack == false {
-								s.playUrl = req.URL
-								s.needListen = false
-							}
-						} else {
-							s.playUrl = req.URL
-							s.needListen = false
+						}
+						if isBlack == false {
+							s.done(req.URL)
+							break
 						}
 					}
 				}
 			case *network.EventResponseReceived: // 接收
 				resp := ev.Response
 				if IsLogUrl {
-					log.Println("resp url", resp.URL)
+					log.Println("recv", resp.URL)
 				}
 				for _, suf := range s.data.White {
 					if strings.Contains(resp.URL, suf) {
+						var isBlack = false
 						if len(s.data.Black) > 0 {
-							var isBlack = false
 							for _, black := range s.data.Black {
 								if len(black) != 0 && strings.Contains(resp.URL, black) == true {
 									isBlack = true
 									break
 								}
 							}
-							if isBlack == false {
-								s.playUrl = resp.URL
-								s.needListen = false
-							}
-						} else {
-							s.playUrl = resp.URL
-							s.needListen = false
+						}
+						if isBlack == false {
+							s.done(resp.URL)
+							break
 						}
 					}
 				}
@@ -206,6 +216,12 @@ func (s *ChromeDp) Cancel() {
 	for _, cancelFunc := range s.cancel {
 		cancelFunc()
 	}
+}
+func (s *ChromeDp) done(url string) {
+	fmt.Println("done", url)
+	s.playUrl = url
+	s.needListen = false
+	s.finish <- struct{}{}
 }
 
 // 清除已经解析成功的ChromeDp实例

@@ -26,6 +26,29 @@ func Xt(c *gin.Context) {
 		return
 	}
 
+	parse, err := toParse(url, proxy)
+	end := time.Now()
+	duration := end.Sub(start) // 计算解析耗时
+	if err != nil {
+		log.Println("res err", err.Error())
+		c.IndentedJSON(200, gin.H{
+			"code": 404,
+			"msg":  "解析失败，" + err.Error(),
+			"time": duration.Seconds(),
+		})
+		return
+	}
+	log.Println("res success", parse.PlayUrl)
+	c.IndentedJSON(200, gin.H{
+		"code": 200,
+		"msg":  "解析成功",
+		"type": parse.Type,
+		"time": duration.Seconds(),
+		"url":  parse.PlayUrl,
+	})
+}
+
+func toParse(url string, proxy string) (*ParseType, error) {
 	cache := getCache(url)
 	if cache == nil { // 新
 		cache = &CacheUrlItemType{
@@ -34,53 +57,24 @@ func Xt(c *gin.Context) {
 			ExpTime: "",
 		}
 		setCache(url, cache)
-		go toParse(url, proxy)
 	}
 	if config.Config.Hc {
 		if cache.Status == Success { // 已有缓存
 			timestamp := time.Now().Unix()
 			timeExp, _ := strconv.ParseInt(cache.ExpTime, 10, 64)
 			if timestamp < timeExp {
-				end := time.Now()
-				duration := end.Sub(start)
-				c.IndentedJSON(200, gin.H{
-					"code": 200,
-					"msg":  "解析成功",
-					"type": "缓存",
-					"time": duration.Seconds(),
-					"url":  cache.PlayUrl,
-				})
-				return
+				return &ParseType{
+					PlayUrl: cache.PlayUrl,
+					Type:    "缓存",
+				}, nil
 			}
 		}
 	}
-	if cache.Status == Failed {
-		cache.Status = Loading
-		go toParse(url, proxy)
-	}
-	for cache.Status == Loading { // 等待解析成功
-		time.Sleep(time.Millisecond * 500)
-	}
-	end := time.Now()
-	duration := end.Sub(start) // 计算解析耗时
 
-	if cache.PlayUrl != "" {
-		c.IndentedJSON(200, gin.H{
-			"code": 200,
-			"msg":  "解析成功",
-			"type": "最新",
-			"time": duration.Seconds(),
-			"url":  cache.PlayUrl,
-		})
-	} else {
-		c.IndentedJSON(200, gin.H{
-			"code": 404,
-			"msg":  "解析失败",
-			"time": duration.Seconds(),
-		})
+	ser, err := New()
+	if err != nil {
+		return nil, err
 	}
-}
-func toParse(url string, proxy string) {
 	// 匹配资源解析配置
 	var isMatchSucc = false
 	var cuParse = config.ParseItemModel{}
@@ -96,8 +90,7 @@ func toParse(url string, proxy string) {
 			break
 		}
 	}
-
-	ser := New(&cuParse)
+	ser.SetData(&cuParse)
 	ser.Init(proxy)
 	playUrl, err := ser.Run(url)
 
@@ -105,17 +98,20 @@ func toParse(url string, proxy string) {
 	futureTimestamp := timestamp + config.Config.HcTime
 
 	if err != nil {
-		log.Println("解析失败", err.Error())
 		setCache(url, &CacheUrlItemType{
 			Status:  Failed,
-			PlayUrl: playUrl,
+			PlayUrl: "",
 			ExpTime: strconv.FormatInt(futureTimestamp, 10),
 		})
-		return
+		return nil, err
 	}
 	setCache(url, &CacheUrlItemType{
 		Status:  Success,
 		PlayUrl: playUrl,
 		ExpTime: strconv.FormatInt(futureTimestamp, 10),
 	})
+	return &ParseType{
+		PlayUrl: playUrl,
+		Type:    "最新",
+	}, nil
 }

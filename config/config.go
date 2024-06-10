@@ -13,8 +13,10 @@ type configModel struct {
 	Hc         bool   `yaml:"hc"`
 	HcTime     int64  `yaml:"hc_time"`
 	XtTime     int    `yaml:"xt_time"`
+	XcOut      int    `yaml:"xc_out"`
 	Headless   bool   `yaml:"headless"`
 	Proxy      string `yaml:"proxy"`
+	ProxyApi   string `yaml:"proxy_api"`
 	XcMax      int    `yaml:"xc_max"`
 	IsLogLocal bool   `yaml:"is_log_local"`
 	IsLogUrl   bool   `yaml:"is_log_url"`

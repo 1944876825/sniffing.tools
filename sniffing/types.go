@@ -13,3 +13,9 @@ const (
 	Loading = 2
 	Failed  = 3
 )
+
+// ParseType type 缓存 最新
+type ParseType struct {
+	PlayUrl string
+	Type    string
+}
