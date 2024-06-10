@@ -20,54 +20,57 @@ func Xt(c *gin.Context) {
 
 	url = strings.TrimSpace(url)
 	proxy = strings.TrimSpace(proxy)
-	md5Url := utils.GetMD5(url)
 
 	if len(url) < 1 {
 		c.IndentedJSON(200, gin.H{"code": 404, "msg": "缺少URL"})
 		return
 	}
-	if config.Config.Hc && cacheUrlList[md5Url].Status == Success { // 已有缓存
-		timestamp := time.Now().Unix()
-		timeExp, _ := strconv.ParseInt(cacheUrlList[md5Url].ExpTime, 10, 64)
-		if timestamp < timeExp {
-			end := time.Now()
-			duration := end.Sub(start)
-			c.IndentedJSON(200, gin.H{
-				"code": 200,
-				"msg":  "解析成功",
-				"type": "缓存",
-				"time": duration.Seconds(),
-				"url":  cacheUrlList[md5Url].PlayUrl,
-			})
-			return
-		}
-	}
 
-	if cacheUrlList[md5Url].Status == Loading { // 正在解析
-		for cacheUrlList[md5Url].Status == 2 { // 判断是否解析成功，否则一直循环等待
-			time.Sleep(time.Millisecond * 200)
-		}
-	} else { // 未解析
-		cacheUrlList[md5Url] = CacheUrlItemType{
-			Status:  2,
+	cache := getCache(url)
+	if cache == nil { // 新
+		cache = &CacheUrlItemType{
+			Status:  Loading,
 			PlayUrl: "",
 			ExpTime: "",
 		}
+		setCache(url, cache)
 		go toParse(url, proxy)
-		for cacheUrlList[md5Url].Status == Loading {
-			time.Sleep(time.Millisecond * 200)
+	}
+	if config.Config.Hc {
+		if cache.Status == Success { // 已有缓存
+			timestamp := time.Now().Unix()
+			timeExp, _ := strconv.ParseInt(cache.ExpTime, 10, 64)
+			if timestamp < timeExp {
+				end := time.Now()
+				duration := end.Sub(start)
+				c.IndentedJSON(200, gin.H{
+					"code": 200,
+					"msg":  "解析成功",
+					"type": "缓存",
+					"time": duration.Seconds(),
+					"url":  cache.PlayUrl,
+				})
+				return
+			}
 		}
+	}
+	if cache.Status == Failed {
+		cache.Status = Loading
+		go toParse(url, proxy)
+	}
+	for cache.Status == Loading { // 等待解析成功
+		time.Sleep(time.Millisecond * 500)
 	}
 	end := time.Now()
 	duration := end.Sub(start) // 计算解析耗时
 
-	if cacheUrlList[md5Url].PlayUrl != "" {
+	if cache.PlayUrl != "" {
 		c.IndentedJSON(200, gin.H{
 			"code": 200,
 			"msg":  "解析成功",
 			"type": "最新",
 			"time": duration.Seconds(),
-			"url":  cacheUrlList[md5Url].PlayUrl,
+			"url":  cache.PlayUrl,
 		})
 	} else {
 		c.IndentedJSON(200, gin.H{
@@ -77,7 +80,7 @@ func Xt(c *gin.Context) {
 		})
 	}
 }
-func toParse(url, proxy string) {
+func toParse(url string, proxy string) {
 	// 匹配资源解析配置
 	var isMatchSucc = false
 	var cuParse = config.ParseItemModel{}
@@ -100,19 +103,19 @@ func toParse(url, proxy string) {
 
 	timestamp := time.Now().Unix()
 	futureTimestamp := timestamp + config.Config.HcTime
-	md5Url := utils.GetMD5(url)
-	if err == nil {
-		cacheUrlList[md5Url] = CacheUrlItemType{
-			Status:  1,
+
+	if err != nil {
+		log.Println("解析失败", err.Error())
+		setCache(url, &CacheUrlItemType{
+			Status:  Failed,
 			PlayUrl: playUrl,
 			ExpTime: strconv.FormatInt(futureTimestamp, 10),
-		}
+		})
 		return
 	}
-	log.Println("解析失败", err.Error())
-	cacheUrlList[md5Url] = CacheUrlItemType{
-		Status:  3,
+	setCache(url, &CacheUrlItemType{
+		Status:  Success,
 		PlayUrl: playUrl,
 		ExpTime: strconv.FormatInt(futureTimestamp, 10),
-	}
+	})
 }

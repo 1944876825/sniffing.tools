@@ -135,7 +135,7 @@ func (s *ChromeDp) Run(url string) (string, error) {
 			log.Println("浏览器关闭")
 			break
 		}
-		time.Sleep(time.Millisecond * 50)
+		time.Sleep(time.Millisecond * 500)
 	}
 	if len(s.playUrl) != 0 {
 		return s.playUrl, nil
